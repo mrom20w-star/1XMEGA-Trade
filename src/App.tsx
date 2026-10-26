@@ -1,8 +1,9 @@
 import React, { useState, useEffect, useRef } from 'react';
-import { OFFICIAL_LINKS } from './types/trading';
+import { AssetPair, ASSET_PAIRS, OFFICIAL_LINKS } from './types/trading';
 import { Header } from './components/Header';
 import { OnboardingModal } from './components/OnboardingModal';
 import { PlayerIdCard } from './components/PlayerIdCard';
+import { TechnicalIndicators } from './components/TechnicalIndicators';
 import { PurePredictor } from './components/PurePredictor';
 import {
   Send,
@@ -11,15 +12,20 @@ import {
   Flame,
   Award,
   Download,
-  ExternalLink,
 } from 'lucide-react';
 
 export default function App() {
   const [playerId, setPlayerId] = useState<string>('');
+  const [promoCode, setPromoCode] = useState<string>('');
   const [showOnboarding, setShowOnboarding] = useState<boolean>(true);
-  const playerIdInputRef = useRef<HTMLInputElement | null>(null);
+  const [selectedPair, setSelectedPair] = useState<AssetPair>(ASSET_PAIRS[0]);
+  const [livePrices, setLivePrices] = useState<Record<string, number>>({});
+  const [activeDirection, setActiveDirection] = useState<'UP' | 'DOWN' | null>(null);
 
-  // Load saved player ID and onboarding state from localStorage
+  const traderIdInputRef = useRef<HTMLInputElement | null>(null);
+  const promoInputRef = useRef<HTMLInputElement | null>(null);
+
+  // Load saved credentials and onboarding state from localStorage
   useEffect(() => {
     try {
       const savedOnboarding = localStorage.getItem('1xmega_onboarding_completed');
@@ -31,24 +37,66 @@ export default function App() {
       if (savedId) {
         setPlayerId(savedId);
       }
+
+      const savedPromo = localStorage.getItem('1xmega_promo_code');
+      if (savedPromo) {
+        setPromoCode(savedPromo);
+      }
     } catch {
       // LocalStorage fallback
     }
+
+    // Initialize asset prices
+    const initialPrices: Record<string, number> = {};
+    ASSET_PAIRS.forEach((p) => {
+      initialPrices[p.id] = p.basePrice;
+    });
+    setLivePrices(initialPrices);
   }, []);
 
-  const handleSavePlayerId = (newId: string) => {
+  // Natural price ticker interval
+  useEffect(() => {
+    const interval = setInterval(() => {
+      setLivePrices((prev) => {
+        const next = { ...prev };
+        ASSET_PAIRS.forEach((p) => {
+          const current = next[p.id] || p.basePrice;
+          const volMultiplier = p.volatility === 'عالية' ? 0.0006 : 0.0002;
+          const delta = (Math.random() - 0.49) * p.basePrice * volMultiplier;
+          next[p.id] = Number((current + delta).toFixed(p.decimals));
+        });
+        return next;
+      });
+    }, 1200);
+
+    return () => clearInterval(interval);
+  }, []);
+
+  const isAccountVerified = Boolean(
+    playerId.trim() && promoCode.trim().toUpperCase() === OFFICIAL_LINKS.promoCode
+  );
+
+  const handleSaveCredentials = (newId: string, newPromo: string) => {
     setPlayerId(newId);
+    setPromoCode(newPromo);
     try {
       localStorage.setItem('1xmega_player_id', newId);
+      localStorage.setItem('1xmega_promo_code', newPromo);
     } catch {
       // LocalStorage fallback
     }
   };
 
-  const handleRequestPlayerIdFocus = () => {
-    if (playerIdInputRef.current) {
-      playerIdInputRef.current.focus();
-      playerIdInputRef.current.scrollIntoView({ behavior: 'smooth', block: 'center' });
+  const handleRequestCredentialsFocus = () => {
+    if (!playerId.trim()) {
+      traderIdInputRef.current?.focus();
+      traderIdInputRef.current?.scrollIntoView({ behavior: 'smooth', block: 'center' });
+    } else if (!promoCode.trim()) {
+      promoInputRef.current?.focus();
+      promoInputRef.current?.scrollIntoView({ behavior: 'smooth', block: 'center' });
+    } else {
+      traderIdInputRef.current?.focus();
+      traderIdInputRef.current?.scrollIntoView({ behavior: 'smooth', block: 'center' });
     }
   };
 
@@ -60,6 +108,8 @@ export default function App() {
     }
     setShowOnboarding(false);
   };
+
+  const currentPrice = livePrices[selectedPair.id] || selectedPair.basePrice;
 
   return (
     <div className="min-h-screen bg-[#070b14] text-slate-100 flex flex-col font-['Cairo',sans-serif] selection:bg-emerald-500/30 selection:text-emerald-300">
@@ -87,7 +137,7 @@ export default function App() {
 
           <div className="flex items-center gap-2.5">
             <span className="text-amber-400 font-bold bg-amber-400/10 px-2.5 py-0.5 rounded-lg border border-amber-400/20 flex items-center gap-1 text-[11px]">
-              <Award size={13} /> برومو: {OFFICIAL_LINKS.promoCode} (بونص 100%)
+              <Award size={13} /> كود البرومو: {OFFICIAL_LINKS.promoCode} (بونص 100%)
             </span>
             <a
               href={OFFICIAL_LINKS.telegram}
@@ -103,19 +153,33 @@ export default function App() {
       </div>
 
       {/* Main Clean Center Body */}
-      <main className="flex-1 max-w-4xl w-full mx-auto p-4 sm:p-6 space-y-6 flex flex-col justify-center">
-        {/* Required Player ID Card right on the outside interface */}
+      <main className="flex-1 max-w-4xl w-full mx-auto p-4 sm:p-6 space-y-5 flex flex-col justify-center">
+        {/* Required Trader ID + Promo Code Card on the outside interface */}
         <PlayerIdCard
           playerId={playerId}
-          onSavePlayerId={handleSavePlayerId}
-          inputRef={playerIdInputRef}
+          promoCode={promoCode}
+          onSaveCredentials={handleSaveCredentials}
+          inputRef={traderIdInputRef}
+          promoInputRef={promoInputRef}
+        />
+
+        {/* Sleek Technical Indicators Panel (RSI, MACD, Bollinger, EMA) */}
+        <TechnicalIndicators
+          selectedPair={selectedPair}
+          onSelectPair={setSelectedPair}
+          livePrice={currentPrice}
+          activeDirection={activeDirection}
         />
 
         {/* Pure Predictor Component (Start -> 10s wait -> UP/DOWN) */}
         <PurePredictor
           playerId={playerId}
-          onUpdatePlayerId={handleSavePlayerId}
-          onRequestPlayerIdFocus={handleRequestPlayerIdFocus}
+          promoCode={promoCode}
+          isAccountVerified={isAccountVerified}
+          onRequestCredentialsFocus={handleRequestCredentialsFocus}
+          selectedPair={selectedPair}
+          livePrice={currentPrice}
+          onDirectionChange={setActiveDirection}
         />
       </main>
 

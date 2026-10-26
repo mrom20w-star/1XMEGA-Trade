@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useRef } from 'react';
-import { OFFICIAL_LINKS } from '../types/trading';
+import { AssetPair, OFFICIAL_LINKS } from '../types/trading';
 import { soundEffects } from '../utils/audio';
 import {
   ArrowUp,
@@ -10,30 +10,40 @@ import {
   RotateCcw,
   Sparkles,
   Zap,
+  Lock,
+  Activity,
+  Layers,
+  BarChart3,
   TrendingUp,
   TrendingDown,
-  Lock,
-  UserCheck,
-  Edit2,
-  Check,
 } from 'lucide-react';
 
 interface Props {
   playerId: string;
-  onUpdatePlayerId: (id: string) => void;
-  onRequestPlayerIdFocus: () => void;
+  promoCode: string;
+  isAccountVerified: boolean;
+  onRequestCredentialsFocus: () => void;
+  selectedPair: AssetPair;
+  livePrice: number;
+  onDirectionChange: (direction: 'UP' | 'DOWN' | null) => void;
 }
 
 export const PurePredictor: React.FC<Props> = ({
   playerId,
-  onUpdatePlayerId,
-  onRequestPlayerIdFocus,
+  promoCode,
+  isAccountVerified,
+  onRequestCredentialsFocus,
+  selectedPair,
+  livePrice,
+  onDirectionChange,
 }) => {
   const [isScanning, setIsScanning] = useState(false);
   const [countdown, setCountdown] = useState(10);
   const [cooldown, setCooldown] = useState(0);
   const [prediction, setPrediction] = useState<'UP' | 'DOWN' | null>(null);
   const [roundNumber, setRoundNumber] = useState(1);
+  const [analysisPhase, setAnalysisPhase] = useState('جارِ فحص إشارات السوق...');
+  const [entryPrice, setEntryPrice] = useState<number>(0);
 
   const scanTimerRef = useRef<NodeJS.Timeout | null>(null);
   const cooldownTimerRef = useRef<NodeJS.Timeout | null>(null);
@@ -46,24 +56,44 @@ export const PurePredictor: React.FC<Props> = ({
   }, []);
 
   const handleStart = () => {
-    if (!playerId.trim()) {
-      onRequestPlayerIdFocus();
+    // Strict block if both Trader ID and Promo are not verified
+    if (!isAccountVerified) {
+      soundEffects.playSellSignal();
+      onRequestCredentialsFocus();
       return;
     }
+
     if (isScanning || cooldown > 0) return;
 
     setIsScanning(true);
     setCountdown(10);
     setPrediction(null);
+    onDirectionChange(null);
     soundEffects.playTick();
 
+    const phases = [
+      'سحب بيانات الشموع وتدفق أوامر السيولة اللحظية...',
+      'قراءة مؤشر RSI (14) واختبار مناطق التشبع...',
+      'تحليل ارتدادات Bollinger Bands وتقاطعات MACD...',
+      'فحص زخم المتوسطات المتحركة EMA 7/25...',
+      'تأكيد اتجاه الصفقة (صعود أم هبوط) لـ Trader ID...',
+    ];
+
     let sec = 10;
+    setAnalysisPhase(phases[0]);
+
     if (scanTimerRef.current) clearInterval(scanTimerRef.current);
 
     scanTimerRef.current = setInterval(() => {
       sec -= 1;
       setCountdown(sec);
       soundEffects.playScanPulse();
+
+      const phaseIdx = Math.min(
+        phases.length - 1,
+        Math.floor((10 - sec) / 2)
+      );
+      setAnalysisPhase(phases[phaseIdx]);
 
       if (sec <= 0) {
         if (scanTimerRef.current) clearInterval(scanTimerRef.current);
@@ -76,7 +106,11 @@ export const PurePredictor: React.FC<Props> = ({
     setIsScanning(false);
     // Determine UP (صعود - أخضر) or DOWN (هبوط - أحمر)
     const result: 'UP' | 'DOWN' = Math.random() > 0.5 ? 'UP' : 'DOWN';
+    const finalPrice = livePrice || selectedPair.basePrice;
+
     setPrediction(result);
+    setEntryPrice(finalPrice);
+    onDirectionChange(result);
     setRoundNumber((r) => r + 1);
 
     if (result === 'UP') {
@@ -111,20 +145,39 @@ export const PurePredictor: React.FC<Props> = ({
         <div className="text-center pb-4 mb-6 border-b border-slate-800/80">
           <div className="inline-flex items-center gap-2 px-3 py-1 rounded-full bg-slate-900 border border-slate-800 text-xs font-bold text-cyan-400 mb-2">
             <Zap size={14} />
-            <span>نظام التوقعات المباشر • صعود أو هبوط</span>
+            <span>نظام التوقعات الذكي • صعود أو هبوط</span>
           </div>
           <h2 className="text-xl sm:text-2xl font-black text-white">
             1XMEGA AI PREDICTOR
           </h2>
           <p className="text-xs sm:text-sm text-slate-400 mt-1">
-            اضغط على زر البدء لانتظار 10 ثوانٍ ومعرفة اتجاه الصفقة للمنصة الرسمية
+            الزوج النشط: <b className="text-cyan-300 font-bold">{selectedPair.name}</b> • اضغط لبدء فحص 10 ثوانٍ وتحديد نقطة الدخول
           </p>
         </div>
 
-        {/* SCANNING STATE (10 Seconds countdown) */}
+        {/* Locked Warning if not verified */}
+        {!isAccountVerified && (
+          <div className="mb-6 p-4 rounded-2xl bg-amber-500/10 border border-amber-500/30 text-center space-y-2">
+            <div className="flex items-center justify-center gap-2 text-amber-400 font-bold text-sm">
+              <Lock size={16} />
+              <span>نظام التوقعات مقفل مؤقتاً</span>
+            </div>
+            <p className="text-xs text-slate-300 max-w-md mx-auto leading-relaxed">
+              يجب إدخال <b className="text-cyan-400">Trader ID</b> وتحته إدخال <b className="text-amber-400">كود البرومو MXG1</b> في الخانة بالأعلى وتأكيدهما معاً للبدء.
+            </p>
+            <button
+              onClick={onRequestCredentialsFocus}
+              className="text-xs text-cyan-400 hover:text-cyan-300 font-bold underline inline-flex items-center gap-1"
+            >
+              <span>انتقل لتسجيل البيانات الآن</span>
+            </button>
+          </div>
+        )}
+
+        {/* SCANNING STATE (10 Seconds countdown with dynamic analysis steps) */}
         {isScanning && (
           <div className="py-8 px-4 my-2 rounded-2xl bg-gradient-to-b from-slate-900/90 to-[#070b14] border-2 border-cyan-500/50 text-center relative overflow-hidden shadow-2xl">
-            {/* Animated Radar Effect */}
+            {/* Animated Radar Ring */}
             <div className="relative w-36 h-36 mx-auto flex items-center justify-center mb-5">
               <svg className="w-full h-full -rotate-90" viewBox="0 0 100 100">
                 <circle
@@ -153,12 +206,22 @@ export const PurePredictor: React.FC<Props> = ({
               </div>
             </div>
 
-            <h3 className="text-lg sm:text-xl font-black text-white mb-1 animate-pulse">
-              جارِ فحص إشارة الجولة رقم #{roundNumber}...
-            </h3>
-            <p className="text-xs text-cyan-300 font-medium">
-              يتم تحليل الاتجاه (صعود أو هبوط) لحساب اللاعب #{playerId || '---'}
+            <div className="flex items-center justify-center gap-2 text-cyan-400 text-sm font-bold mb-2">
+              <Activity size={16} className="animate-pulse" />
+              <span>جارِ فحص إشارات السوق للجولة #{roundNumber}...</span>
+            </div>
+
+            <p className="text-xs sm:text-sm text-slate-200 font-medium max-w-sm mx-auto mb-4 h-6">
+              {analysisPhase}
             </p>
+
+            {/* Analysis Progress Bar */}
+            <div className="w-full max-w-xs mx-auto bg-slate-800 h-2 rounded-full overflow-hidden">
+              <div
+                className="bg-gradient-to-r from-cyan-500 to-emerald-400 h-full transition-all duration-1000"
+                style={{ width: `${((10 - countdown) / 10) * 100}%` }}
+              />
+            </div>
           </div>
         )}
 
@@ -179,7 +242,7 @@ export const PurePredictor: React.FC<Props> = ({
                   size={14}
                   className={prediction === 'UP' ? 'text-emerald-400' : 'text-rose-400'}
                 />
-                <span>توقع الجولة #{roundNumber - 1} مؤكد بنسبة 96%</span>
+                <span>توقع الجولة #{roundNumber - 1} لحساب #{playerId} مؤكد بنسبة 96%</span>
               </div>
 
               {/* Big Icon & Direction Text */}
@@ -215,9 +278,18 @@ export const PurePredictor: React.FC<Props> = ({
                     ? 'ادخل المنصة الآن واختر الزر الأخضر (صعود / CALL)'
                     : 'ادخل المنصة الآن واختر الزر الأحمر (هبوط / PUT)'}
                 </p>
+
+                {/* Entry Price & Strike Info */}
+                <div className="flex items-center justify-center gap-3 mt-4 text-xs font-mono bg-black/40 px-4 py-2 rounded-xl border border-white/10">
+                  <span className="text-slate-400">الزوج: <b className="text-white">{selectedPair.name}</b></span>
+                  <span>•</span>
+                  <span className="text-slate-400">سعر الدخول: <b className="text-cyan-300">{entryPrice.toFixed(selectedPair.decimals)}</b></span>
+                  <span>•</span>
+                  <span className="text-slate-400">المدة: <b className="text-amber-300">1 دقيقة</b></span>
+                </div>
               </div>
 
-              {/* Action Buttons to open the official platform */}
+              {/* Action Button to open the official platform */}
               <div className="mt-6 pt-4 border-t border-white/10 space-y-3">
                 <a
                   href={OFFICIAL_LINKS.platformDownload}
@@ -300,17 +372,24 @@ export const PurePredictor: React.FC<Props> = ({
 
             <button
               onClick={handleStart}
-              className="w-full sm:w-auto px-10 py-5 rounded-2xl font-black text-lg bg-gradient-to-r from-emerald-500 via-cyan-500 to-blue-500 hover:brightness-110 text-slate-950 flex items-center justify-center gap-3 shadow-2xl shadow-cyan-500/30 transition-all transform hover:scale-[1.02] active:scale-[0.98]"
+              className={`w-full sm:w-auto px-10 py-5 rounded-2xl font-black text-lg flex items-center justify-center gap-3 shadow-2xl transition-all transform hover:scale-[1.02] active:scale-[0.98] ${
+                isAccountVerified
+                  ? 'bg-gradient-to-r from-emerald-500 via-cyan-500 to-blue-500 hover:brightness-110 text-slate-950 shadow-cyan-500/30'
+                  : 'bg-slate-800 text-slate-400 hover:bg-slate-700 border border-slate-700'
+              }`}
             >
-              <Sparkles size={22} />
-              <span>بدء التوقع (10 ثوانٍ)</span>
+              {isAccountVerified ? (
+                <>
+                  <Sparkles size={22} />
+                  <span>بدء التوقع (10 ثوانٍ)</span>
+                </>
+              ) : (
+                <>
+                  <Lock size={20} className="text-amber-400" />
+                  <span>يجب إدخال Trader ID وكود البرومو للبدء 🔒</span>
+                </>
+              )}
             </button>
-
-            {!playerId && (
-              <p className="text-xs text-amber-400 mt-4 flex items-center gap-1.5 font-bold">
-                ⚠️ يرجى إدخال ID حسابك في الأعلى قبل بدء التوقع
-              </p>
-            )}
           </div>
         )}
       </div>
