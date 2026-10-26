@@ -1,0 +1,6 @@
+{
+  "name": "1XMEGA Trade - منصة إشارات التداول الذكية",
+  "description": "منصة 1XMEGA Trade الرسمية لتوليد إشارات التداول الحصرية للشراء والبيع بدقة عالية وبونص 100% على الإيداع الأول.",
+  "requestFramePermissions": [],
+  "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
+}
